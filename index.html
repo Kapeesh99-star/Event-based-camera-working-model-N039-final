@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Event-Based Camera Simulator</title>
+  <style>
+    body {
+      background-color: black;
+      color: white;
+      text-align: center;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    h1 { margin-top: 20px; }
+    #video, #canvas {
+      width: 640px;
+      height: 480px;
+      border: 2px solid white;
+      margin-top: 15px;
+      border-radius: 12px;
+    }
+    .controls {
+      margin-top: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    label { margin-right: 10px; }
+    input[type=range] { width: 200px; }
+    .credit {
+      margin-top: 20px;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <h1>Event-Based Camera Simulator</h1>
+  <video id="video" autoplay muted></video>
+  <canvas id="canvas"></canvas>
+  <div class="controls">
+    <div>
+      <label>Mode:</label>
+      <select id="mode">
+        <option value="red">Red–Black</option>
+        <option value="bw">Black–White</option>
+        <option value="blue">Blue–Black</option>
+      </select>
+    </div>
+    <div>
+      <label>Threshold:</label>
+      <input type="range" id="threshold" min="5" max="80" value="20">
+    </div>
+    <div>
+      <label>Noise Reduction:</label>
+      <input type="range" id="noise" min="0" max="5" value="2">
+    </div>
+    <div>
+      <label>Contrast:</label>
+      <input type="range" id="contrast" min="1" max="4" step="0.1" value="1.5">
+    </div>
+  </div>
+  <div class="credit">Project by <b>Kapeesh Godiyal (N039)</b></div>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const thresholdSlider = document.getElementById('threshold');
+    const noiseSlider = document.getElementById('noise');
+    const contrastSlider = document.getElementById('contrast');
+    const modeSelect = document.getElementById('mode');
+    let prevFrame = null;
+    // Access the webcam
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => alert("Camera access denied: " + err));
+    video.addEventListener('play', () => {
+      const processFrame = () => {
+        if (video.paused || video.ended) return;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let data = frame.data;
+        const threshold = parseInt(thresholdSlider.value);
+        const noiseReduction = parseInt(noiseSlider.value);
+        const contrast = parseFloat(contrastSlider.value);
+        const mode = modeSelect.value;
+        if (prevFrame) {
+          const prevData = prevFrame.data;
+          const newFrame = ctx.createImageData(canvas.width, canvas.height);
+          const newData = newFrame.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const pr = prevData[i], pg = prevData[i + 1], pb = prevData[i + 2];
+            const currBrightness = (r + g + b) / 3;
+            const prevBrightness = (pr + pg + pb) / 3;
+            const diff = currBrightness - prevBrightness;
+            // Noise reduction (ignore small changes)
+            if (Math.abs(diff) < threshold + noiseReduction) {
+              newData[i] = newData[i + 1] = newData[i + 2] = 0; // no event
+            } else {
+              // Apply color mode
+              if (mode === "red") {
+                newData[i] = diff > 0 ? 255 : 0;
+                newData[i + 1] = 0;
+                newData[i + 2] = 0;
+              } else if (mode === "bw") {
+                const val = diff > 0 ? 255 : 0;
+                newData[i] = newData[i + 1] = newData[i + 2] = val;
+              } else if (mode === "blue") {
+                newData[i] = 0;
+                newData[i + 1] = 0;
+                newData[i + 2] = diff > 0 ? 255 : 0;
+              }
+              // Apply contrast scaling
+              newData[i] = Math.min(255, newData[i] * contrast);
+              newData[i + 1] = Math.min(255, newData[i + 1] * contrast);
+              newData[i + 2] = Math.min(255, newData[i + 2] * contrast);
+            }
+            newData[i + 3] = 255; // alpha channel
+          }
+          ctx.putImageData(newFrame, 0, 0);
+        }
+        prevFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        requestAnimationFrame(processFrame);
+      };
+      requestAnimationFrame(processFrame);
+    });
+  </script>
+</body>
+</html>
